@@ -55,7 +55,6 @@ def compute_covar(ticker: str, conn):
 
 
 def compute_covar_for_all_tickers(tickers: List[str]):
-    print("Running in Parallel")
     processes = []
     parent_connections = []
     for ticker in tickers:
@@ -82,7 +81,7 @@ def compute_covar_for_all_tickers(tickers: List[str]):
     return [parent_conn.recv()[0] for parent_conn in parent_connections]
 
 
-def handler(event, context):
+def lambda_handler(event, context):
     if "action" in event:
         if event["action"] == "compute_covar":
             event = {"model_name": "compute_covariance", "ticker": "test123"}
@@ -97,14 +96,14 @@ def handler(event, context):
             )
     elif "Records" in event:
         print("testing multiprocessing")
-        tickers = [record.get("Body") for record in event["Records"]]
+        tickers = [record.get("body") for record in event["Records"]]
         print(compute_covar_for_all_tickers(tickers))
         print(f"finished processing for tickers {tickers}")
 
 
 if __name__ == "__main__":
     messages = [
-        {"Body": ticker}
+        {"body": ticker}
         for ticker in [
             "AAPl",
             "BTC",
@@ -113,4 +112,4 @@ if __name__ == "__main__":
         ]
     ]
     event = {"Records": messages}
-    handler(event, None)
+    lambda_handler(event, None)

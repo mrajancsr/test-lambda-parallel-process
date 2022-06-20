@@ -1,6 +1,7 @@
-# - the purpose of this file is to send messages to a sqs queue to invoke a lambda function on trigger
-# the triggered lambda function computes a covariance matrix that i end up storing in a distributed queue system
-# then i obtain the value from the queue for the following tickers
+# The file computes the covariance matrix by sending messages as tickers to a
+# distributed queue in AWS which triggers a lambda function concurrently
+# each triggered lambda function is running a multi-processing for
+# batch of tickers
 
 import asyncio
 import logging
@@ -9,18 +10,22 @@ import time
 from typing import Any, List
 
 import uvloop
-from aiobotocore.session import get_session
+from aiobotocore.session import AioBaseClient, get_session
 from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 
-queue_url = "https://sqs.us-east-1.amazonaws.com/955157183814/test_queue"
-result_queue_url = "https://sqs.us-east-1.amazonaws.com/955157183814/result_queue"
+MESSAGE_QUEUE = "test_queue"
+RESULT_QUEUE = "result_queue"
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 
-async def receive_messages(client, queue_name: str, total_messages: int):
+async def receive_messages(
+    client: AioBaseClient,
+    queue_name: str,
+    total_messages: int,
+) -> asyncio.Queue:
     print(f"receiving message from {queue_name}")
     queue = asyncio.Queue()
     try:
@@ -47,11 +52,15 @@ async def receive_messages(client, queue_name: str, total_messages: int):
         print(e)
     else:
         # purging the queue to ensure all the messages are deleted
-        await client.purge_queue(QueueUrl=queue_url)
+        # await client.purge_queue(QueueUrl=queue_url)
         return queue
 
 
-async def send_batch_message(client, queue_name, batch):
+async def send_batch_message(
+    client: AioBaseClient,
+    queue_name: str,
+    batch: List[str],
+):
     print(f"sending message to queue {queue_name} with batch {batch}")
     try:
         response = await client.get_queue_url(QueueName=queue_name)
@@ -66,7 +75,7 @@ async def send_batch_message(client, queue_name, batch):
             entries = [
                 {
                     "Id": str(ind),
-                    "MessageBody": msg["Body"],
+                    "MessageBody": msg["body"],
                 }
                 for ind, msg in enumerate(batch)
             ]
@@ -78,14 +87,14 @@ async def send_batch_message(client, queue_name, batch):
                     logger.info(
                         "Message sent: %s: %s",
                         msg_meta["MessageId"],
-                        batch[int(msg_meta["Id"])]["Body"],
+                        batch[int(msg_meta["Id"])]["body"],
                     )
             elif "Failed" in response:
                 for msg_meta in response["Failed"]:
                     logger.warning(
                         "Failed to send: %s: %s",
                         msg_meta["MessageId"],
-                        batch[int(msg_meta["Id"])]["Body"],
+                        batch[int(msg_meta["Id"])]["body"],
                     )
         except ClientError as err:
             logger.exception(f"Send messages failed to queue: {queue_name}")
@@ -100,20 +109,13 @@ def batch_records(records: List[Any], batch_size: int) -> List[List[Any]]:
     result = []
     for i in range(num_batches):
         result.append(records[i * batch_size : (i + 1) * batch_size])
-    yield from result
-
-
-async def send_and_receive(client, batch):
-    res = await send_batch_message(client, "test_queue", batch)
-    return res
-    # result = await receive_messages(client, "result_queue")
-    # return result
+    return result
 
 
 async def handler(event, context=None):
-    if event["action"] == "test-queue-process":
+    if event["action"] == "submit_messages":
         messages = [
-            {"Body": ticker}
+            {"body": ticker}
             for ticker in [
                 "AAPl",
                 "BTC",
@@ -145,15 +147,15 @@ async def handler(event, context=None):
         session = get_session()
         async with session.create_client("sqs", region_name="us-east-1") as client:
             tasks = [
-                asyncio.create_task(send_batch_message(client, "test_queue", batch))
-                for batch in batch_records(messages, 5)
+                asyncio.create_task(send_batch_message(client, MESSAGE_QUEUE, batch))
+                for batch in iter(batch_records(messages, 5))
             ]
             result = await asyncio.gather(*tasks)
             print(result)
 
             result = await receive_messages(
                 client,
-                "result_queue",
+                RESULT_QUEUE,
                 len(messages),
             )
             print(result)
@@ -161,8 +163,9 @@ async def handler(event, context=None):
 
 
 if __name__ == "__main__":
+    # Only used for debugging purposes
     start = time.perf_counter()
-    event = {"action": "test-queue-process"}
+    event = {"action": "submit_messages"}
     asyncio.run(handler(event, None))
     end = time.perf_counter()
     print(f"program finished in {(end-start):.4f} seconds")
