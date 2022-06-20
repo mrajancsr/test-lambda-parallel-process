@@ -47,7 +47,7 @@ async def receive_messages(client, queue_name: str, total_messages: int):
         print(e)
     else:
         # purging the queue to ensure all the messages are deleted
-        # client.purge_queue(QueueUrl=queue_url)
+        await client.purge_queue(QueueUrl=queue_url)
         return queue
 
 
@@ -66,7 +66,7 @@ async def send_batch_message(client, queue_name, batch):
             entries = [
                 {
                     "Id": str(ind),
-                    "MessageBody": msg["body"],
+                    "MessageBody": msg["Body"],
                 }
                 for ind, msg in enumerate(batch)
             ]
@@ -78,14 +78,14 @@ async def send_batch_message(client, queue_name, batch):
                     logger.info(
                         "Message sent: %s: %s",
                         msg_meta["MessageId"],
-                        batch[int(msg_meta["Id"])]["body"],
+                        batch[int(msg_meta["Id"])]["Body"],
                     )
             elif "Failed" in response:
                 for msg_meta in response["Failed"]:
                     logger.warning(
                         "Failed to send: %s: %s",
                         msg_meta["MessageId"],
-                        batch[int(msg_meta["Id"])]["body"],
+                        batch[int(msg_meta["Id"])]["Body"],
                     )
         except ClientError as err:
             logger.exception(f"Send messages failed to queue: {queue_name}")
@@ -113,7 +113,7 @@ async def send_and_receive(client, batch):
 async def handler(event, context=None):
     if event["action"] == "test-queue-process":
         messages = [
-            {"body": ticker}
+            {"Body": ticker}
             for ticker in [
                 "AAPl",
                 "BTC",
@@ -146,7 +146,7 @@ async def handler(event, context=None):
         async with session.create_client("sqs", region_name="us-east-1") as client:
             tasks = [
                 asyncio.create_task(send_batch_message(client, "test_queue", batch))
-                for batch in batch_records(messages, 10)
+                for batch in batch_records(messages, 5)
             ]
             result = await asyncio.gather(*tasks)
             print(result)

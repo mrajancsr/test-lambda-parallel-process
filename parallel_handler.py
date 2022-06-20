@@ -1,8 +1,7 @@
 import json
 import logging
-import math
-import time
-from typing import Any, List
+from multiprocessing import Pipe, Process
+from typing import List
 
 import boto3
 from botocore.exceptions import ClientError
@@ -40,6 +39,49 @@ def send_message(queue, message_body, message_attributes=None, queue_url=""):
         return response
 
 
+def compute_covar(ticker: str, conn):
+    print(f"processing for ticker {ticker}")
+    event = {"model_name": "compute_covariance", "ticker": ticker}
+    res = lambda_client.invoke(
+        FunctionName="generate_standard_normal", Payload=json.dumps(event)
+    )
+    response = send_message(
+        queue=sqs,
+        message_body=res["Payload"].read().decode("utf-8"),
+        queue_url=result_queue_url,
+    )
+    conn.send([response])
+    conn.close()
+
+
+def compute_covar_for_all_tickers(tickers: List[str]):
+    print("Running in Parallel")
+    processes = []
+    parent_connections = []
+    for ticker in tickers:
+        parent_conn, child_conn = Pipe()
+        parent_connections.append(parent_conn)
+
+        process = Process(
+            target=compute_covar,
+            args=(
+                ticker,
+                child_conn,
+            ),
+        )
+        processes.append(process)
+
+    # start all processes
+    for process in processes:
+        process.start()
+
+    # make sure that all processes have finished
+    for process in processes:
+        process.join()
+
+    return [parent_conn.recv()[0] for parent_conn in parent_connections]
+
+
 def handler(event, context):
     if "action" in event:
         if event["action"] == "compute_covar":
@@ -54,31 +96,21 @@ def handler(event, context):
                 queue_url=result_queue_url,
             )
     elif "Records" in event:
-        records = event["Records"]
-        for record in records:
-            ticker = record.get("body")
-            event = {"model_name": "compute_covariance", "ticker": ticker}
-            response = lambda_client.invoke(
-                FunctionName="generate_standard_normal", Payload=json.dumps(event)
-            )
-            send_message(
-                sqs,
-                response["Payload"].read().decode("utf-8"),
-                queue_url=result_queue_url,
-            )
-
-
-def receive_message(queue, queue_url):
-    response = queue.receive_message(
-        QueueUrl=queue_url,
-        AttributeNames=['All'],
-        MessageAttributeNames=['All'],
-        MaxNumberOfMessages=22,
-        WaitTimeSeconds=10
-    )
-    return response
+        print("testing multiprocessing")
+        tickers = [record.get("Body") for record in event["Records"]]
+        print(compute_covar_for_all_tickers(tickers))
+        print(f"finished processing for tickers {tickers}")
 
 
 if __name__ == "__main__":
-    event = {"action": "compute_covar"}
+    messages = [
+        {"Body": ticker}
+        for ticker in [
+            "AAPl",
+            "BTC",
+            "ETH",
+            "ADA",
+        ]
+    ]
+    event = {"Records": messages}
     handler(event, None)
