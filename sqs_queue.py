@@ -62,10 +62,11 @@ async def send_batch_message(
     batch: List[str],
 ) -> None:
     print(f"sending message to queue {queue_name} with batch {batch}")
+    AWS_ERROR_MSG = "AWS.SimpleQueueService.NonExistentQueue"
     try:
         response = await client.get_queue_url(QueueName=queue_name)
     except ClientError as err:
-        if err.response["Error"]["Code"] == "AWS.SimpleQueueService.NonExistentQueue":
+        if err.response["Error"]["Code"] == AWS_ERROR_MSG:
             print(f"Queue {queue_name} does not exist")
         else:
             raise
@@ -156,15 +157,11 @@ async def handler(event, context=None):
         async with session.create_client("sqs", region_name="us-east-1") as client:
             tasks = [
                 asyncio.create_task(send_and_receive_batch(client, batch))
-                for batch in iter(batch_records(messages, 5))
+                for batch in iter(batch_records(messages, 10))
             ]
-            result = await asyncio.gather(*tasks)
-            print(f"length of queue {len(result)}")
-            for res in result:
-                print(res)
+            for task in asyncio.as_completed(tasks):
+                print(await task)
                 print("\n")
-
-            return result
 
 
 if __name__ == "__main__":
