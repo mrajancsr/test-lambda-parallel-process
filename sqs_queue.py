@@ -134,7 +134,10 @@ async def push_batch_to_queue(
             raise err
 
 
-async def send_and_poll(client: AioBaseClient, batch: List[str]) -> asyncio.Queue:
+async def send_and_poll(
+    client: AioBaseClient,
+    batch: List[str],
+) -> asyncio.Queue:
     """Sends and polls messages to AWS Queue
 
     Parameters
