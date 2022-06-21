@@ -21,10 +21,10 @@ RESULT_QUEUE = "result_queue"
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 
-async def receive_messages(
+async def receive_batch_message(
     client: AioBaseClient,
     queue_name: str,
-    total_messages: int,
+    batch_size: int,
 ) -> asyncio.Queue:
     print(f"receiving message from {queue_name}")
     queue = asyncio.Queue()
@@ -32,11 +32,11 @@ async def receive_messages(
         response = await client.get_queue_url(QueueName=queue_name)
         queue_url = response.get("QueueUrl")
         count = 0
-        while count < total_messages:
+        while count < batch_size:
             response = await client.receive_message(
                 QueueUrl=queue_url,
-                WaitTimeSeconds=0,
-                MaxNumberOfMessages=10,
+                WaitTimeSeconds=1,
+                MaxNumberOfMessages=1,
             )
             if "Messages" in response:
                 for msg in response["Messages"]:
@@ -60,7 +60,7 @@ async def send_batch_message(
     client: AioBaseClient,
     queue_name: str,
     batch: List[str],
-):
+) -> None:
     print(f"sending message to queue {queue_name} with batch {batch}")
     try:
         response = await client.get_queue_url(QueueName=queue_name)
@@ -99,8 +99,16 @@ async def send_batch_message(
         except ClientError as err:
             logger.exception(f"Send messages failed to queue: {queue_name}")
             raise err
-        else:
-            return response
+
+
+async def send_and_receive_batch(
+    client: AioBaseClient, batch: List[str]
+) -> asyncio.Queue:
+    await send_batch_message(client, queue_name=MESSAGE_QUEUE, batch=batch)
+    message = await receive_batch_message(
+        client, queue_name=RESULT_QUEUE, batch_size=len(batch)
+    )
+    return message
 
 
 def batch_records(records: List[Any], batch_size: int) -> List[List[Any]]:
@@ -147,18 +155,15 @@ async def handler(event, context=None):
         session = get_session()
         async with session.create_client("sqs", region_name="us-east-1") as client:
             tasks = [
-                asyncio.create_task(send_batch_message(client, MESSAGE_QUEUE, batch))
+                asyncio.create_task(send_and_receive_batch(client, batch))
                 for batch in iter(batch_records(messages, 5))
             ]
             result = await asyncio.gather(*tasks)
-            print(result)
+            print(f"length of queue {len(result)}")
+            for res in result:
+                print(res)
+                print("\n")
 
-            result = await receive_messages(
-                client,
-                RESULT_QUEUE,
-                len(messages),
-            )
-            print(result)
             return result
 
 
