@@ -117,7 +117,9 @@ def batch_records(records: List[Any], batch_size: int) -> List[List[Any]]:
 
     result = []
     for i in range(num_batches):
-        result.append(records[i * batch_size : (i + 1) * batch_size])
+        result.append(
+            records[i * batch_size : (i + 1) * batch_size]  # noqa: E203
+        )  # noqa: E501
     return result
 
 
@@ -154,7 +156,9 @@ async def handler(event, context=None):
             ]
         ]
         session = get_session()
-        async with session.create_client("sqs", region_name="us-east-1") as client:
+        async with session.create_client(
+            "sqs", region_name="us-east-1"
+        ) as client:  # noqa: E501
             tasks = [
                 asyncio.create_task(send_and_receive_batch(client, batch))
                 for batch in iter(batch_records(messages, 10))
