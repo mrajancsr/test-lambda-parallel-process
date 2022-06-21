@@ -21,7 +21,7 @@ RESULT_QUEUE = "result_queue"
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 
-async def receive_batch_message(
+async def poll_queue_for_batch(
     client: AioBaseClient,
     queue_name: str,
     batch_size: int,
@@ -72,7 +72,7 @@ async def receive_batch_message(
         return queue
 
 
-async def send_batch_message(
+async def push_batch_to_queue(
     client: AioBaseClient,
     queue_name: str,
     batch: List[str],
@@ -134,10 +134,8 @@ async def send_batch_message(
             raise err
 
 
-async def send_and_receive_batch(
-    client: AioBaseClient, batch: List[str]
-) -> asyncio.Queue:
-    """Sends and receives messages to AWS Queue
+async def send_and_poll(client: AioBaseClient, batch: List[str]) -> asyncio.Queue:
+    """Sends and polls messages to AWS Queue
 
     Parameters
     ----------
@@ -151,16 +149,30 @@ async def send_and_receive_batch(
     asyncio.Queue
         _description_
     """
-    await send_batch_message(client, queue_name=MESSAGE_QUEUE, batch=batch)
+    await push_batch_to_queue(client, queue_name=MESSAGE_QUEUE, batch=batch)
 
     # poll the AWS Queue for this particular batch
-    message = await receive_batch_message(
+    message = await poll_queue_for_batch(
         client, queue_name=RESULT_QUEUE, batch_size=len(batch)
     )
     return message
 
 
 def batch_records(records: List[Any], batch_size: int) -> List[List[Any]]:
+    """Batches records by batch size
+
+    Parameters
+    ----------
+    records : List[Any]
+        the records to batch
+    batch_size : int
+        size of each batch
+
+    Returns
+    -------
+    List[List[Any]]
+        batch of records given by batch_size
+    """
     num_batches: int = math.ceil(len(records) / batch_size)
 
     result = []
@@ -178,7 +190,7 @@ async def handler(event, context=None):
             "sqs", region_name="us-east-1"
         ) as client:  # noqa: E501
             tasks = [
-                asyncio.create_task(send_and_receive_batch(client, batch))
+                asyncio.create_task(send_and_poll(client, batch))
                 for batch in iter(batch_records(event["messages"], 10))
             ]
             for task in asyncio.as_completed(tasks):
