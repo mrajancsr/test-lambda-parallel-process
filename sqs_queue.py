@@ -173,43 +173,13 @@ def batch_records(records: List[Any], batch_size: int) -> List[List[Any]]:
 
 async def handler(event, context=None):
     if event["action"] == "submit_messages":
-        messages = [
-            {"body": ticker}
-            for ticker in [
-                "AAPl",
-                "BTC",
-                "ETH",
-                "ADA",
-                "LUNA",
-                "GOOG",
-                "MATIC",
-                "POLKADOT",
-                "SOL",
-                "BTCUSDT",
-                "ETHUSDT",
-                "SOLUSDT",
-                "DODGECOIN",
-                "SHIBAINU",
-                "MORGAN STANLEY",
-                "JP MORGAN",
-                "BEST BUY",
-                "TARGET",
-                "TESLA",
-                "AMAZON",
-                "TWITTER",
-                "BENZ",
-                "BMW",
-                "HONDA",
-                "TOYOTA",
-            ]
-        ]
         session = get_session()
         async with session.create_client(
             "sqs", region_name="us-east-1"
         ) as client:  # noqa: E501
             tasks = [
                 asyncio.create_task(send_and_receive_batch(client, batch))
-                for batch in iter(batch_records(messages, 10))
+                for batch in iter(batch_records(event["messages"], 10))
             ]
             for task in asyncio.as_completed(tasks):
                 print(await task)
@@ -219,7 +189,37 @@ async def handler(event, context=None):
 if __name__ == "__main__":
     # Only used for debugging purposes
     start = time.perf_counter()
-    event = {"action": "submit_messages"}
+    messages = [
+        {"body": ticker}
+        for ticker in [
+            "AAPl",
+            "BTC",
+            "ETH",
+            "ADA",
+            "LUNA",
+            "GOOG",
+            "MATIC",
+            "POLKADOT",
+            "SOL",
+            "BTCUSDT",
+            "ETHUSDT",
+            "SOLUSDT",
+            "DODGECOIN",
+            "SHIBAINU",
+            "MORGAN STANLEY",
+            "JP MORGAN",
+            "BEST BUY",
+            "TARGET",
+            "TESLA",
+            "AMAZON",
+            "TWITTER",
+            "BENZ",
+            "BMW",
+            "HONDA",
+            "TOYOTA",
+        ]
+    ]
+    event = {"action": "submit_messages", "messages": messages}
     asyncio.run(handler(event, None))
     end = time.perf_counter()
     print(f"program finished in {(end-start):.4f} seconds")
