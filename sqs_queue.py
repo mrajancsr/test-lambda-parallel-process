@@ -26,6 +26,22 @@ async def receive_batch_message(
     queue_name: str,
     batch_size: int,
 ) -> asyncio.Queue:
+    """Polls a queue in AWS given by queue_name
+
+    Parameters
+    ----------
+    client : AioBaseClient
+        connects to sqs service
+    queue_name : str
+        registered queue in AWS
+    batch_size : int
+        size of the records in batch
+
+    Returns
+    -------
+    asyncio.Queue
+        Queue containing messages in AWS
+    """
     print(f"receiving message from {queue_name}")
     queue = asyncio.Queue()
     try:
@@ -61,6 +77,22 @@ async def send_batch_message(
     queue_name: str,
     batch: List[str],
 ) -> None:
+    """Sends messages to a queue in AWS given by queue_name
+
+    Parameters
+    ----------
+    client : AioBaseClient
+        AWS SQS client
+    queue_name : str
+        name of the Queue to push messages to
+    batch : List[str]
+        records in this batch are pushed to queue in AWS
+
+    Raises
+    ------
+    err
+        _description_
+    """
     print(f"sending message to queue {queue_name} with batch {batch}")
     AWS_ERROR_MSG = "AWS.SimpleQueueService.NonExistentQueue"
     try:
@@ -105,7 +137,23 @@ async def send_batch_message(
 async def send_and_receive_batch(
     client: AioBaseClient, batch: List[str]
 ) -> asyncio.Queue:
+    """Sends and receives messages to AWS Queue
+
+    Parameters
+    ----------
+    client : AioBaseClient
+        AWS SQS Client
+    batch : List[str]
+        batch of records to send to AWS Queue
+
+    Returns
+    -------
+    asyncio.Queue
+        _description_
+    """
     await send_batch_message(client, queue_name=MESSAGE_QUEUE, batch=batch)
+
+    # poll the AWS Queue for this particular batch
     message = await receive_batch_message(
         client, queue_name=RESULT_QUEUE, batch_size=len(batch)
     )
