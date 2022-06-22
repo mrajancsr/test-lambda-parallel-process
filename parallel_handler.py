@@ -9,19 +9,33 @@ from botocore.exceptions import ClientError
 logger = logging.getLogger(__name__)
 sqs = boto3.client("sqs")
 lambda_client = boto3.client("lambda")
-queue_url = "https://sqs.us-east-1.amazonaws.com/955157183814/test_queue"
-result_queue_url = "https://sqs.us-east-1.amazonaws.com/955157183814/result_queue"
+QUEUENAME = "result_queue"
+QUEUE_URL = sqs.get_queue_url(QueueName=QUEUENAME)["QueueUrl"]
 
 
 def send_message(queue, message_body, message_attributes=None, queue_url=""):
-    """
-    Send a message to an Amazon SQS queue.
+    """Sends message to AWS SQS Queue
 
-    :param queue: The queue that receives the message.
-    :param message_body: The body text of the message.
-    :param message_attributes: Custom attributes of the message. These are key-value
-                               pairs that can be whatever you want.
-    :return: The response from SQS that contains the assigned message ID.
+    Parameters
+    ----------
+    queue : _type_
+        _description_
+    message_body : _type_
+        _description_
+    message_attributes : _type_, optional
+        _description_, by default None
+    queue_url : str, optional
+        _description_, by default ""
+
+    Returns
+    -------
+    _type_
+        _description_
+
+    Raises
+    ------
+    error
+        _description_
     """
     if not message_attributes:
         message_attributes = {}
@@ -48,7 +62,7 @@ def compute_covar(ticker: str, conn):
     response = send_message(
         queue=sqs,
         message_body=res["Payload"].read().decode("utf-8"),
-        queue_url=result_queue_url,
+        queue_url=QUEUE_URL,
     )
     conn.send([response])
     conn.close()
@@ -92,7 +106,7 @@ def lambda_handler(event, context):
             send_message(
                 sqs,
                 message_body=response["Payload"].read().decode("utf-8"),
-                queue_url=result_queue_url,
+                queue_url=QUEUE_URL,
             )
     elif "Records" in event:
         print("testing multiprocessing")
