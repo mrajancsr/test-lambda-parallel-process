@@ -9,6 +9,8 @@ from botocore.exceptions import ClientError
 logger = logging.getLogger(__name__)
 sqs = boto3.client("sqs")
 lambda_client = boto3.client("lambda")
+queue_url = "https://sqs.us-east-1.amazonaws.com/955157183814/test_queue"
+result_queue_url = "https://sqs.us-east-1.amazonaws.com/955157183814/result_queue"
 
 
 def send_message(queue, message_body, message_attributes=None, queue_url=""):
