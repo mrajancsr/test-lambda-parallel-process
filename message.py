@@ -4,11 +4,14 @@
 # batch of tickers
 
 import asyncio
+import json
 import logging
 import math
 import time
-from typing import Any, List
+from typing import Any, Dict, List
 
+import numpy as np
+import pandas as pd
 import uvloop
 from aiobotocore.session import AioBaseClient, get_session
 from botocore.exceptions import ClientError
@@ -189,16 +192,26 @@ def batch_records(records: List[Any], batch_size: int) -> List[List[Any]]:
 async def handler(event, context=None):
     if event["action"] == "submit_messages":
         session = get_session()
-        async with session.create_client(
-            "sqs", region_name="us-east-1"
-        ) as client:  # noqa: E501
+        async with session.create_client("sqs") as client:
             tasks = [
                 asyncio.create_task(send_and_poll(client, batch))
                 for batch in iter(batch_records(event["messages"], 10))
             ]
+            result = []
             for task in asyncio.as_completed(tasks):
-                print(await task)
-                print("\n")
+                messages = await task
+                # keep processing until queue is empty
+                while messages.qsize():
+                    msg: Dict[str, List[List[float]]] = json.loads(
+                        json.loads(await messages.get())
+                    )  # noqa
+                    ticker, val = msg.popitem()
+                    df = pd.DataFrame(np.array(val).reshape(10, 10))
+                    df["ticker"] = ticker
+                    result.append(df)
+            df = pd.concat(result)
+            print(df)
+            return df
 
 
 if __name__ == "__main__":
