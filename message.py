@@ -3,6 +3,8 @@
 # each triggered lambda function is running a multi-processing for
 # batch of tickers
 
+# -- To run the file, go the terminal and type python3 message.py
+
 import asyncio
 import json
 import logging
