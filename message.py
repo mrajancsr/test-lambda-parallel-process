@@ -1,6 +1,6 @@
 # The file computes the covariance matrix by sending messages as tickers to a
 # distributed queue in AWS which triggers a lambda function concurrently
-# each triggered lambda function is running a multi-processing for
+# each triggered lambda function is running a parallel processing for
 # batch of tickers
 
 # -- To run the file, go the terminal and type python3 message.py
@@ -217,7 +217,7 @@ async def handler(event, context=None):
 
 
 if __name__ == "__main__":
-    # Only used for debugging purposes
+    # -- Only used for debugging purposes
     start = time.perf_counter()
     messages = [
         {"body": ticker}

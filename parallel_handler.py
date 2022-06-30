@@ -1,7 +1,6 @@
 import json
 import logging
 from multiprocessing import Pipe, Process
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List
 
 import boto3
