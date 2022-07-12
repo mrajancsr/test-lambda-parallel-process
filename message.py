@@ -233,13 +233,11 @@ if __name__ == "__main__":
     start = time.perf_counter()
     messages = [
         {"body": ticker}
-        for ticker in [
-            "AAPl",
+        for ticker in [,
             "BTC",
             "ETH",
             "ADA",
             "LUNA",
-            "GOOG",
             "MATIC",
             "POLKADOT",
             "SOL",
@@ -248,17 +246,6 @@ if __name__ == "__main__":
             "SOLUSDT",
             "DODGECOIN",
             "SHIBAINU",
-            "MORGAN STANLEY",
-            "JP MORGAN",
-            "BEST BUY",
-            "TARGET",
-            "TESLA",
-            "AMAZON",
-            "TWITTER",
-            "BENZ",
-            "BMW",
-            "HONDA",
-            "TOYOTA",
         ]
     ]
     event = {
