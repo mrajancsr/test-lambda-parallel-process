@@ -207,7 +207,9 @@ async def handler(event: Dict[str, Any], context=None):
         async with session.create_client("sqs") as client:
             tasks = [
                 asyncio.create_task(send_and_poll(client, batch))
-                for batch in iter(batch_records(event["messages"], 10))
+                for batch in iter(
+                    batch_records(event["messages"], event["batch_size"])
+                )  # noqa: E501
             ]
             result = []
             for task in asyncio.as_completed(tasks):
@@ -259,7 +261,11 @@ if __name__ == "__main__":
             "TOYOTA",
         ]
     ]
-    event = {"action": "submit_messages", "messages": messages}
+    event = {
+        "action": "submit_messages",
+        "messages": messages,
+        "batch_size": 10,
+    }
     asyncio.run(handler(event, None))
     end = time.perf_counter()
     print(f"program finished in {(end-start):.4f} seconds")
