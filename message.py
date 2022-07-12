@@ -49,6 +49,7 @@ async def poll_queue_for_batch(
     """
     print(f"receiving message from {queue_name}")
     queue = asyncio.Queue()
+    delete_messages = []
     try:
         response = await client.get_queue_url(QueueName=queue_name)
         queue_url = response.get("QueueUrl")
@@ -59,11 +60,15 @@ async def poll_queue_for_batch(
                 WaitTimeSeconds=1,
                 MaxNumberOfMessages=1,
             )
+            await asyncio.sleep(0.1)
             if "Messages" in response:
                 for msg in response["Messages"]:
                     await queue.put(msg["Body"])
-                    await client.delete_message(
-                        QueueUrl=queue_url, ReceiptHandle=msg["ReceiptHandle"]
+                    delete_messages.append(
+                        {
+                            "Id": msg["MessageId"],
+                            "ReceiptHandle": msg["ReceiptHandle"],
+                        }  # noqa: E501
                     )
                     count += 1
             else:
@@ -74,6 +79,11 @@ async def poll_queue_for_batch(
     else:
         # purging the queue to ensure all the messages are deleted
         # await client.purge_queue(QueueUrl=queue_url)
+        for batch in iter(batch_records(delete_messages, 10)):
+            await client.delete_message_batch(
+                QueueUrl=queue_url, Entries=batch
+            )  # noqa: E501
+            await asyncio.sleep(0.1)
         return queue
 
 
@@ -191,7 +201,7 @@ def batch_records(records: List[Any], batch_size: int) -> List[List[Any]]:
     return result
 
 
-async def handler(event, context=None):
+async def handler(event: Dict[str, Any], context=None):
     if event["action"] == "submit_messages":
         session = get_session()
         async with session.create_client("sqs") as client:
