@@ -1,14 +1,19 @@
 # The file computes the covariance matrix by sending messages as tickers to a
 # distributed queue in AWS which triggers a lambda function concurrently
-# each triggered lambda function is running a multi-processing for
+# each triggered lambda function is running a parallel processing for
 # batch of tickers
 
+# -- To run the file, go the terminal and type python3 message.py
+
 import asyncio
+import json
 import logging
 import math
 import time
-from typing import Any, List
+from typing import Any, Dict, List
 
+import numpy as np
+import pandas as pd
 import uvloop
 from aiobotocore.session import AioBaseClient, get_session
 from botocore.exceptions import ClientError
@@ -44,6 +49,7 @@ async def poll_queue_for_batch(
     """
     print(f"receiving message from {queue_name}")
     queue = asyncio.Queue()
+    delete_messages = []
     try:
         response = await client.get_queue_url(QueueName=queue_name)
         queue_url = response.get("QueueUrl")
@@ -54,11 +60,15 @@ async def poll_queue_for_batch(
                 WaitTimeSeconds=1,
                 MaxNumberOfMessages=1,
             )
+            await asyncio.sleep(0.1)
             if "Messages" in response:
                 for msg in response["Messages"]:
                     await queue.put(msg["Body"])
-                    await client.delete_message(
-                        QueueUrl=queue_url, ReceiptHandle=msg["ReceiptHandle"]
+                    delete_messages.append(
+                        {
+                            "Id": msg["MessageId"],
+                            "ReceiptHandle": msg["ReceiptHandle"],
+                        }  # noqa: E501
                     )
                     count += 1
             else:
@@ -69,6 +79,11 @@ async def poll_queue_for_batch(
     else:
         # purging the queue to ensure all the messages are deleted
         # await client.purge_queue(QueueUrl=queue_url)
+        for batch in iter(batch_records(delete_messages, 10)):
+            await client.delete_message_batch(
+                QueueUrl=queue_url, Entries=batch
+            )  # noqa: E501
+            await asyncio.sleep(0.1)
         return queue
 
 
@@ -186,33 +201,43 @@ def batch_records(records: List[Any], batch_size: int) -> List[List[Any]]:
     return result
 
 
-async def handler(event, context=None):
+async def handler(event: Dict[str, Any], context=None):
     if event["action"] == "submit_messages":
         session = get_session()
-        async with session.create_client(
-            "sqs", region_name="us-east-1"
-        ) as client:  # noqa: E501
+        async with session.create_client("sqs") as client:
             tasks = [
                 asyncio.create_task(send_and_poll(client, batch))
-                for batch in iter(batch_records(event["messages"], 10))
+                for batch in iter(
+                    batch_records(event["messages"], event["batch_size"])
+                )  # noqa: E501
             ]
+            result = []
             for task in asyncio.as_completed(tasks):
-                print(await task)
-                print("\n")
+                messages = await task
+                # keep processing until queue is empty
+                while messages.qsize():
+                    msg: Dict[str, List[List[float]]] = json.loads(
+                        json.loads(await messages.get())
+                    )  # noqa
+                    ticker, val = msg.popitem()
+                    df = pd.DataFrame(np.array(val).reshape(10, 10))
+                    df["ticker"] = ticker
+                    result.append(df)
+            df = pd.concat(result)
+            print(df)
+            return df
 
 
 if __name__ == "__main__":
-    # Only used for debugging purposes
+    # -- Only used for debugging purposes
     start = time.perf_counter()
     messages = [
         {"body": ticker}
-        for ticker in [
-            "AAPl",
+        for ticker in [,
             "BTC",
             "ETH",
             "ADA",
             "LUNA",
-            "GOOG",
             "MATIC",
             "POLKADOT",
             "SOL",
@@ -221,20 +246,13 @@ if __name__ == "__main__":
             "SOLUSDT",
             "DODGECOIN",
             "SHIBAINU",
-            "MORGAN STANLEY",
-            "JP MORGAN",
-            "BEST BUY",
-            "TARGET",
-            "TESLA",
-            "AMAZON",
-            "TWITTER",
-            "BENZ",
-            "BMW",
-            "HONDA",
-            "TOYOTA",
         ]
     ]
-    event = {"action": "submit_messages", "messages": messages}
+    event = {
+        "action": "submit_messages",
+        "messages": messages,
+        "batch_size": 10,
+    }
     asyncio.run(handler(event, None))
     end = time.perf_counter()
     print(f"program finished in {(end-start):.4f} seconds")
